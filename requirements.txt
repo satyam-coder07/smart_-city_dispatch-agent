@@ -1,8 +1,5 @@
-fastapi
-uvicorn
-websockets
-groq
-python-dotenv
 streamlit
+groq
 pandas
 pydeck
+python-dotenv
