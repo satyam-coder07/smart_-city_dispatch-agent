@@ -5,7 +5,7 @@ import random, asyncio
 from src.agents import triage_agent
 from src.geo import get_eta
 
-st.set_page_config(page_title="Smart City Dispatch", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Smart City Dispatch", layout="wide", initial_sidebar_state="expanded")
 
 # Professional UI Styling
 st.markdown("""
@@ -25,6 +25,12 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Sidebar for Configuration
+with st.sidebar:
+    st.header("🔑 Config")
+    user_api_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...")
+    st.info("Enter your key to enable real-time Llama-3 Triage.")
 
 # Initialize State
 if "resources" not in st.session_state:
@@ -64,15 +70,14 @@ async def run_swarm():
     ]
     
     while True:
-        # Agent 1: Triage (LLM)
         call = random.choice(CALL_DB)
-        new_inc = await triage_agent(call["text"], call["lat"], call["lon"])
+        # Pass the key from the sidebar to the agent
+        new_inc = await triage_agent(call["text"], call["lat"], call["lon"], user_api_key)
         
         if new_inc:
             st.session_state.incidents.insert(0, new_inc)
             st.session_state.logs.append(f"<span class='triage'>[TRIAGE]</span> Parsed {new_inc['id']}")
             
-            # Agent 2: Dispatch (Geometric)
             req = new_inc["resource"]
             avail = [r for r in st.session_state.resources if r["type"] == req and r["status"] == "Available"]
             
@@ -99,7 +104,6 @@ async def run_swarm():
 
         await asyncio.sleep(6)
         
-        # Agent 3: Resolution (Lifecycle)
         if len(st.session_state.incidents) > 2:
             resolved = st.session_state.incidents.pop()
             for r in st.session_state.resources:
@@ -107,6 +111,7 @@ async def run_swarm():
                     r["status"], r["target"] = "Available", None
             st.session_state.logs.append(f"<span class='res'>[RESOLVE]</span> Incident {resolved['id']} cleared.")
 
-# UI Trigger
 if st.button("Initialize Swarm Stream", use_container_width=True):
+    if not user_api_key:
+        st.warning("Running in MOCK MODE (No API Key provided).")
     asyncio.run(run_swarm())
