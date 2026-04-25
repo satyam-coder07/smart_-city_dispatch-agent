@@ -1,9 +1,11 @@
-import os, asyncio, random
+import streamlit as st
+import os, asyncio, random, json, threading
+import uvicorn
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from src.agents import triage_agent, dispatch_agent, resolution_agent
 
+# --- FASTAPI BACKEND SECTION ---
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -19,13 +21,8 @@ state = {
 
 CALLS = [("Fire at 42nd St!", 40.752, -73.977), ("Collision on Broadway!", 40.759, -73.984), ("Injury near Park Ave!", 40.761, -73.971)]
 
-@app.get("/")
-async def get():
-    with open("index.html", "r") as f: return HTMLResponse(f.read())
-
 @app.websocket("/ws")
-@app.websocket("/ws/{path:path}")
-async def ws_endpoint(websocket: WebSocket, path: str = ""):
+async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     await websocket.send_json({"type": "init", "resources": state["resources"], "incidents": state["incidents"]})
     while True:
@@ -40,6 +37,27 @@ async def ws_endpoint(websocket: WebSocket, path: str = ""):
             await websocket.send_json({"type": "log", "agent": "TRIAGE", "msg": f"Incident {inc_data['id']} localized."})
             unit = dispatch_agent(inc_data, state["resources"])
             if unit:
-                await websocket.send_json({"type": "log", "agent": "DISPATCH", "msg": f"Routing {unit['id']} (ETA: {inc_data['eta']}m)"})
+                await websocket.send_json({"type": "log", "agent": "DISPATCH", "msg": f"Routing {unit['id']}"})
                 asyncio.create_task(resolution_agent(inc_data['id'], unit['id'], state, websocket))
             await websocket.send_json({"type": "update", "resources": state["resources"], "incidents": state["incidents"]})
+
+def run_fastapi():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# --- STREAMLIT UI SECTION ---
+st.set_page_config(page_title="Smart City Dispatch", layout="wide")
+
+if "fastapi_started" not in st.session_state:
+    thread = threading.Thread(target=run_fastapi, daemon=True)
+    thread.start()
+    st.session_state.fastapi_started = True
+
+st.title("🏙️ Smart City Dynamic Dispatch Grid")
+st.markdown("### 3-Node Autonomous Agent Swarm")
+
+# Load the HTML Dashboard via an iframe to keep your original UI
+with open("index.html", "r") as f:
+    html_code = f.read()
+    # Update the websocket URL to point to localhost:8000 since it's running in background
+    html_code = html_code.replace("window.location.host", "127.0.0.1:8000")
+    st.components.v1.html(html_code, height=800, scrolling=False)

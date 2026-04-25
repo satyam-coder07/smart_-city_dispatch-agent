@@ -3,3 +3,6 @@ uvicorn
 websockets
 groq
 python-dotenv
+streamlit
+pandas
+pydeck
